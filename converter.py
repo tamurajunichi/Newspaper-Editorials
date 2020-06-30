@@ -4,7 +4,6 @@ import concurrent.futures
 import urllib
 import re
 
-tagger = MeCab.Tagger('/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd')
 rule = ['名詞', '動詞', '形容詞', '副詞']
 
 def tokenize(sentence, stemming):
@@ -14,15 +13,18 @@ def tokenize(sentence, stemming):
     :return tokenized_sentence: list of str, 形態素のリスト
     """
     tokenized_sentence = []
+    tagger = MeCab.Tagger('-d /home/tj/local/lib/mecab/dic/mecab-ipadic-neologd')
     if stemming is True:
         node = tagger.parseToNode(sentence)
         while node:
-            word_surface = node.surface
             word_features = node.feature.split(',')
 
             if word_features[0] in rule:
                 # 原形にする
-                word = word_features[6]
+                try:
+                    word = word_features[6]
+                except IndexError:
+                    word = '*'
                 if word is not '*':
                     tokenized_sentence.append(word)
             node = node.next
@@ -41,12 +43,19 @@ def tokenize(sentence, stemming):
 
 def out_tokenized_txt(data, tokenized_title, tokenized_main_txt):
     path = "./"
-    url = data[0]
+    url = data[0][0]
+    soup = data[0][1]
     title = data[1]
     main_txt = data[2]
-    date = re.findall(r'\d{7,}',url)[0]
 
-    file = path+title+"-" + date + "mainichi-" +".txt"
+    if "mainichi" in url:
+        date = re.findall(r'\d{7,}',url)[0]
+        file = path+title+"-" + date + "-mainichi" +".txt"
+    elif "asahi" in url:
+        date = soup.find(class_="UpdateDate").text
+        date = ''.join(re.findall(r'\d+', date)[:-2])
+        file = path + title + "-" + date + "-asahi" + ".txt"
+
     with open(file, 'w') as f:
         f.writelines([title, "\n", main_txt, "\n\n", " ".join(tokenized_title), ":"+str(len(tokenized_title)),
                       "\n", " ".join(tokenized_main_txt), ":"+str(len(tokenized_main_txt))])
@@ -62,10 +71,11 @@ def convert(data, stopword=True, stemming=True):
         try:
             with open('stop_word.txt', 'r', encoding='utf-8') as file:
                 stopwords = [word.replace('\n', '') for word in file.readlines()]
-        except Exception as e:
-            print(e)
+        except:
             url = 'http://svn.sourceforge.jp/svnroot/slothlib/CSharp/Version1/SlothLib/NLP/Filter/StopWord/word/Japanese.txt'
             urllib.request.urlretrieve(url, 'stop_word.txt')
+            with open('stop_word.txt', 'r', encoding='utf-8') as file:
+                stopwords = [word.replace('\n', '') for word in file.readlines()]
 
         tokenized_title = [word for word in tokenized_title if word not in stopwords]
         tokenized_main_txt = [word for word in tokenized_main_txt if word not in stopwords]
@@ -77,11 +87,14 @@ def convert(data, stopword=True, stemming=True):
 def main():
     url = "https://mainichi.jp/articles/20200624/ddm/005/070/085000c"
     url ="https://www.asahi.com/articles/DA3S14526484.html?iref=pc_rensai_article_long_16_prev"
-    datas = dl.download(url, k=10)
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = [executor.submit(convert, data) for data in datas]
-        for future in concurrent.futures.as_completed(futures):
-            print("finished {}".format(future))
+    datas = dl.download(url, k=1)
+    print("コンバート開始")
+    for data in datas:
+        convert(data)
+    #with concurrent.futures.ProcessPoolExecutor() as executor:
+    #    futures = [executor.submit(convert, data) for data in datas]
+    #    for future in concurrent.futures.as_completed(futures):
+    #        print("finished {}".format(future))
 
 
 if __name__ == '__main__':
