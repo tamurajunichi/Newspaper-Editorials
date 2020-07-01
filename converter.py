@@ -4,7 +4,9 @@ import concurrent.futures
 import urllib
 import re
 
+# 必要な品詞だけをリスト化
 rule = ['名詞', '動詞', '形容詞', '副詞']
+
 
 def tokenize(sentence, stemming):
     """日本語の文を形態素の列に分割する関数
@@ -13,7 +15,7 @@ def tokenize(sentence, stemming):
     :return tokenized_sentence: list of str, 形態素のリスト
     """
     tokenized_sentence = []
-    tagger = MeCab.Tagger('-d /home/tj/local/lib/mecab/dic/mecab-ipadic-neologd')
+    tagger = MeCab.Tagger('/usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd')
     if stemming is True:
         node = tagger.parseToNode(sentence)
         while node:
@@ -34,15 +36,20 @@ def tokenize(sentence, stemming):
         for i in range(len(node)):
             feature = node[i].split("\t")
             if feature[0] == "EOS":
-                # 文が終わったら終了
                 break
-            # 分割された形態素を追加
             tokenized_sentence.append(feature[0])
     return tokenized_sentence
 
 
 def out_tokenized_txt(data, tokenized_title, tokenized_main_txt):
-    path = "./"
+    """形態素解析にかけた記事をファイルに出力する
+
+    :param data: 形態素解析するまえのデータが入っているリスト
+    :param tokenized_title: 形態素解析後のタイトル
+    :param tokenized_main_txt: 形態素解析後の本文
+    :return:
+    """
+    path = "./data/"
     url = data[0][0]
     soup = data[0][1]
     title = data[1]
@@ -62,6 +69,13 @@ def out_tokenized_txt(data, tokenized_title, tokenized_main_txt):
 
 
 def convert(data, stopword=True, stemming=True):
+    """形態素解析をかけて分かち書きする
+
+    :param data: 形態素解析掛ける前の元データ
+    :param stopword: ストップワードを使うかのフラグ
+    :param stemming: ステミングするかのフラグ
+    :return:
+    """
     # トークン化する
     tokenized_title = tokenize(data[1], stemming)
     tokenized_main_txt = tokenize(data[2], stemming)
@@ -85,16 +99,21 @@ def convert(data, stopword=True, stemming=True):
 
 
 def main():
+    url_list = list()
     url = "https://mainichi.jp/articles/20200624/ddm/005/070/085000c"
-    url ="https://www.asahi.com/articles/DA3S14526484.html?iref=pc_rensai_article_long_16_prev"
-    datas = dl.download(url, k=1)
-    print("コンバート開始")
-    for data in datas:
-        convert(data)
-    #with concurrent.futures.ProcessPoolExecutor() as executor:
-    #    futures = [executor.submit(convert, data) for data in datas]
-    #    for future in concurrent.futures.as_completed(futures):
-    #        print("finished {}".format(future))
+    url_list.append(url)
+    url ="https://www.asahi.com/articles/DA3S14264789.html?iref=pc_rensai_article_long_16_prev"
+    url_list.append(url)
+    for url in url_list[1:]:
+        datas = dl.download(url, k=1000, dist_prev=True)
+        print("コンバート開始")
+        print("総出力ファイル数："+str(len(datas)))
+        for data in datas:
+            convert(data)
+        #with concurrent.futures.ProcessPoolExecutor() as executor:
+        #    futures = [executor.submit(convert, data) for data in datas]
+        #    for future in concurrent.futures.as_completed(futures):
+        #        print("finished {}".format(future))
 
 
 if __name__ == '__main__':

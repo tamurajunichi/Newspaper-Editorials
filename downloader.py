@@ -12,11 +12,10 @@ han = ascii_letters + digits
 table = {c + 65248: c for c in map(ord, han)}
 
 
-def get_contents(url):
+def extract(url):
     """urlからbeuatifulsoupでタイトルと本文を抽出。全角英数字は半角英数字へ、空白文字と改行コードの除去。
 
     :param url:
-    :param news_company:
     :return: url、タイトル、本文を返す
     """
     soup = url[1]
@@ -25,14 +24,11 @@ def get_contents(url):
     if "mainichi" in url[0]:
         title = soup.find_all("h1")[0].get_text()
         main_text = ''.join([t.text for t in soup.select("#main > div.article > div.main-text > p")])
-        print(title, main_text)
     elif "asahi" in url[0]:
         title = soup.find_all("h1")[1].text
         main_text = ''.join([t.text for t in soup.select("#MainInner > div.ArticleBody > div.ArticleText > p")])
-        print(title, main_text)
     elif "yomiuri" in url[0]:
         pass
-        print("この新聞社の社説は取扱できません")
 
     # titleを抽出した後、全角英数字を半角英数字に直し、空白文字と改行コードの除去
     title = ''.join([t.translate(table) for t in title])
@@ -44,34 +40,35 @@ def get_contents(url):
 
 
 def parse(url):
-    """urlのhtmlをダウンロードしてbeautifulsoupオブジェクトを返す
+    """urlのhtmlをダウンロードしてbeautifulsoupオブジェクトを返す（javascriptによって後から追加されていく要素に対応するためselenium使用してパーサーにかける）
 
     :param url:
     :return: soup: beutifulsoupのパースされたオブジェクトを返す
     """
     options = Options()
-    options.binary_location = '/usr/bin/google-chrome'
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    chrome_driver_binary = "/home/tj/chromedriver"
+    options.add_argument("--disable-setuid-sandbox")
+    chrome_driver_binary = "/mnt/c/Program Files (x86)/Google/Chrome/Application/chromedriver.exe"
 
     driver = webdriver.Chrome(chrome_driver_binary, chrome_options=options)
 
     driver.get(url)
     html = driver.page_source.encode('utf-8')
     soup = BeautifulSoup(html, "html.parser")
+    driver.quit()
     return soup
 
 
 def get_urls(url, dist, k, n, url_list):
     """urlを再帰的にurl_listへ格納していく
 
-    :param url:
-    :param dist: distは最初のURLからどちらかの方向（前or次の記事）を探索していくかを表す
-    :param n: 何回再帰処理を行うか。パワポでいうk/2に相当する
+    :param url: スクレイピングするURL
+    :param dist: distは最初のURLからどちらかの方向（前or次の記事）を探索していくか
+    :param k: 何回再帰するか
+    :param n: 何回目の再帰かカウント用
     :param url_list: 返り値として渡すため使われるリスト
-    :param news_company:
     :return: クロールして得たURLのリストを返す
     """
     try:
@@ -83,15 +80,12 @@ def get_urls(url, dist, k, n, url_list):
             url_list.append([url, soup])
 
         if "mainichi" in url:
-            url_elems = soup.find_all(href=re.compile("//mainichi.jp/articles/"))
-
             # クロールする方向へ進めるURLをゲットする
             if dist == 0:
-                next_url = "https:" + url_elems[1].attrs['href']
+                next_url = "https:" + soup.find(class_="col2 prev").find('a')['href']
             elif dist == 1:
-                next_url = "https:" + url_elems[2].attrs['href']
+                next_url = "https:" + soup.find(class_="col2 next").find('a')['href']
         elif "asahi" in url:
-            # クロールする方向へ進めるURLをゲットする
             if dist == 0:
                 next_url = "https://www.asahi.com" + soup.find(id='PrevLink').find('a')['href']
             elif dist == 1:
@@ -111,23 +105,23 @@ def get_urls(url, dist, k, n, url_list):
         n += 1
         return get_urls(next_url, dist, k, n, url_list)
     except:
-        # 不正なURLが出るので応急処置
-        #if "mainichi" in url:
-        #    url_list[-1] = url_list[-1][0].replace("https:https", "https")
         return url_list[:-1]
 
 
-def download(url, k):
-    """クローリングとテキストの抽出をマルチプロセスで行う
+def download(url, k, dist_prev=False):
+    """クローリングとテキストの抽出を行う
 
     :param url: 最初の起点となるURLを入れる
     :return: url, タイトル, 本文のタプルを返す
     """
     # urlダウンロード
     print("urlダウンロード開始")
-    list1 = get_urls(url, 0, k, 0, list())
-    list2 = get_urls(url, 1, k, 0, list())
-    url_list = list1 + list2[1:]
+    if dist_prev is True:
+        url_list = get_urls(url, 0, k, 0, list())
+    else:
+        list1 = get_urls(url, 0, k, 0, list())
+        list2 = get_urls(url, 1, k, 0, list())
+        url_list = list1 + list2[1:]
     #with concurrent.futures.ProcessPoolExecutor() as executor:
     #    futures = [executor.submit(get_urls, url, dist, k, 0, url_list) for dist in [0, 1]]
     #    results = [future.result() for future in futures]
@@ -140,7 +134,7 @@ def download(url, k):
     print("抽出開始")
     results = []
     for url in url_list:
-        results.append(get_contents(url))
+        results.append(extract(url))
     #with concurrent.futures.ProcessPoolExecutor() as executor:
     #    futures = [executor.submit(get_contents, url) for url in url_list]
     #    results = [future.result() for future in futures]
