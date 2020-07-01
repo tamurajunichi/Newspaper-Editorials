@@ -41,7 +41,7 @@ def each_visualize(x_list):
 
 
 def same_visualize(x_list):
-    """同じグラフにヒストグラフを表示する
+    """同じグラフにヒストグラムを表示する
 
     :param x_list:
     :return:
